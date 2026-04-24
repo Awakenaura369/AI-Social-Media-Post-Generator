@@ -3,69 +3,109 @@ import requests
 from bs4 import BeautifulSoup
 from groq import Groq
 
-# إعدادات الصفحة
-st.set_page_config(page_title="AI Social Media Post Generator", page_icon="🚀")
+# إعدادات الصفحة بتصميم عصري (Dark Mode friendly)
+st.set_page_config(page_title="AI Social Media Sniper", page_icon="🎯", layout="wide")
 
-# جلب مفتاح API من Secrets أو المدخلات
+# CSS بسيط لتحسين المظهر
+st.markdown("""
+    <style>
+    .main { background-color: #0e1117; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #ff4b4b; color: white; }
+    </style>
+    """, unsafe_allow_html=True)
+
+#Sidebar للإعدادات
+st.sidebar.title("⚙️ Settings")
 api_key = st.sidebar.text_input("Enter Groq API Key:", type="password")
+model_option = st.sidebar.selectbox("Choose Model:", 
+    ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"])
 
-def extract_text_from_url(url):
+def extract_content(url):
     try:
-        response = requests.get(url, timeout=10)
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
-        # كنجبدو غير النص المهم (العنوان والفقرات)
-        paragraphs = soup.find_all(['h1', 'p'])
-        article_text = " ".join([p.get_text() for p in paragraphs])
-        return article_text[:4000] # تحديد النص باش ما نفوتوش الـ Context limit
-    except Exception as e:
-        return f"Error: {e}"
+        
+        # إزالة السكريبتات والستايلات لضمان نظافة النص
+        for script in soup(["script", "style"]):
+            script.extract()
 
-def generate_social_posts(article_content):
+        # جلب العنوان والفقرات
+        title = soup.find('h1').get_text() if soup.find('h1') else "No Title"
+        paragraphs = soup.find_all('p')
+        content = " ".join([p.get_text() for p in paragraphs])
+        
+        full_text = f"Title: {title}\nContent: {content}"
+        return full_text[:5000] # تحديد الحد لتجنب مشاكل الـ Tokens
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+def generate_social_posts(article_text):
     client = Groq(api_key=api_key)
     
+    # الـ Prompt دابا مطور باش يخرج ليك "Facebook Sniper Style"
     prompt = f"""
-    Analyze the following article content and create 3 high-converting social media posts:
-    1. **LinkedIn Post**: Professional tone, focused on insights and value, includes 3-5 hashtags.
-    2. **Facebook Post**: Engaging, conversational, uses emojis, and a clear Call to Action (CTA).
-    3. **Twitter (X) Post**: Concise, punchy, focused on the main hook.
+    You are an expert Social Media Strategist and Copywriter. 
+    Analyze this article and generate 3 professional posts.
 
-    Article Content: {article_content}
-    
-    Return the results in a clean, formatted way.
+    Article Content: {article_text}
+
+    1. 🎯 **Facebook Sniper Hook**: 
+       Start with a powerful "Open Loop" or "Pattern Interrupt" hook. 
+       Use conversational language, emojis, and a clear Call to Action (CTA).
+       Target audience: Entrepreneurs and Tech enthusiasts.
+
+    2. 💼 **LinkedIn Insight**: 
+       Professional, authoritative tone. Focus on 3 key takeaways or "Lessons Learned". 
+       Include relevant industry hashtags.
+
+    3. 🐦 **X (Twitter) Thread Starter**: 
+       Punchy, bold, and designed to get retweets. Maximum 280 characters.
+
+    Format the output clearly with bold headings.
     """
     
-    completion = client.chat.completions.create(
-        model="llama3-70b-8192",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-    )
-    return completion.choices[0].message.content
+    try:
+        completion = client.chat.completions.create(
+            model=model_option,
+            messages=[{"role": "system", "content": "You are a helpful AI that creates viral social media content."},
+                      {"role": "user", "content": prompt}],
+            temperature=0.75,
+            max_tokens=2048
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        return f"❌ Groq Error: {str(e)}"
 
-# واجهة المستخدم
-st.title("🔗 Article to Social Media Post")
-st.subheader("تحويل رابط المقال إلى منشورات احترافية")
+# واجهة المستخدم الرئيسية
+st.title("🚀 AI Social Media Sniper")
+st.markdown("قم بتحويل أي مقال تقني إلى منشورات فيسبوك ولينكد إن واحترافية في ثوانٍ.")
 
-url_input = st.text_input("حط رابط المقالة هنا (URL):")
+url = st.text_input("إلصق رابط المقال هنا:", placeholder="https://example.com/article")
 
-if st.button("Generate Posts ✨"):
+col1, col2 = st.columns([1, 1])
+
+if st.button("Generate Strategy ✨"):
     if not api_key:
-        st.error("عافاك دخل Groq API Key أولاً!")
-    elif not url_input:
-        st.warning("دخل الرابط بعدا!")
+        st.error("المرجو إدخال API Key الخاص بـ Groq في الجانب.")
+    elif not url:
+        st.warning("المرجو وضع رابط صالح.")
     else:
-        with st.spinner("جاري تحليل المقال وكتابة البوستات..."):
-            # 1. استخراج النص
-            text = extract_text_from_url(url_input)
+        with st.spinner("⏳ جاري قراءة المقال وتوليد المحتوى..."):
+            article_data = extract_content(url)
             
-            if "Error" in text:
-                st.error("مقدرناش نقراو الرابط، تأكد واش خدام.")
+            if "Error" in article_data:
+                st.error(f"حدث خطأ أثناء جلب المقال: {article_data}")
             else:
-                # 2. توليد البوستات
-                result = generate_social_posts(text)
+                posts = generate_social_posts(article_data)
                 
-                st.divider()
-                st.markdown(result)
-                st.balloons()
+                st.success("✅ تم توليد المنشورات بنجاح!")
+                st.markdown("---")
+                st.markdown(posts)
+                
+                # إمكانية نسخ النص (تحسين تجربة المستخدم)
+                st.text_area("Copy Text Here:", value=posts, height=300)
 
-# إضافة لمسة "Facebook Sniper" اللي كتعجبك
-st.sidebar.info("هاد الأداة مصممة باش تعاونك فـ Personal Branding و Client Acquisition.")
+st.sidebar.markdown("---")
+st.sidebar.write("Developed for **Mouhcine Digital Systems**")
